@@ -1,0 +1,240 @@
+---
+title: "MSDS456_Assignment1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("nflfastR")
+#install.packages("rlang")
+#install.packages("tidyverse", type = "binary")
+#install.packages("ggrepel", type = "binary")
+#install.packages("nflreadr", type = "binary")
+#install.packages("nflplotR", type = "binary")
+#install.packages("Metrics")
+
+library(tidyverse)
+library(dplyr)
+library(ggrepel)
+library(nflreadr)
+library(nflplotR)
+library(nflfastR)
+library(ggrepel)
+library(caTools)
+library(Metrics)
+library(GGally)
+library(grid)
+
+options(scipen = 9999)
+```
+
+```{r}
+#load 2021 and 2022 data
+data <- load_pbp(2021:2022)
+
+```
+```{r}
+dim(data)
+```
+
+```{r}
+summary(data)
+```
+```{r}
+# add winner and poswins variables
+data <- data %>% mutate (winner = ifelse(home_score > away_score, home_team, away_team))
+data <- data %>% mutate (poswins = ifelse (winner == posteam, "yes", "no"))
+
+#change poswins to factor
+data$poswins <- as.factor(data$poswins)
+
+length(data)
+```
+```{r}
+summary(data$poswins)
+```
+```{r}
+data <- as.data.frame(data)
+```
+```{r}
+table(data$play_type)
+```
+```{r}
+table(data$qtr)
+summary(data$down)
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+# remove poswin and down NAs, non-plays, overtime plays, and 2022 NFC championship game, and 2021 super bowl game
+subdat <- data %>%
+            filter(!is.na(data$poswin),
+                   !is.na(data$down),
+                   play_type != "no_play",
+                   qtr <= 4,
+                   game_id != "2022_21_SF_PHI",
+                   game_id != "2021_22_LA_CIN")
+
+# create df of 2022 NFC championship game for later so that it is not included in training but can be added back to testing
+nfc_chp <-  data %>%
+            filter(!is.na(data$poswin),
+                   !is.na(data$down),
+                   play_type != "no_play",
+                   qtr <= 4,
+                   game_id == "2022_21_SF_PHI")
+
+
+nrow(data)-nrow(subdat)
+nrow(subdat)
+```
+```{r}
+# only select variables of interest
+model_df <- subdat %>%
+  select(game_id, play_type, home_team, away_team, posteam, winner, down, ydstogo, 
+          game_seconds_remaining, qtr , yardline_100, score_differential, poswins,
+          home_wp, away_wp, wp)
+
+
+nfc_chp <- nfc_chp %>%
+  select(game_id, play_type, home_team, away_team, posteam, winner, down, ydstogo, 
+          game_seconds_remaining, qtr , yardline_100, score_differential, poswins,
+          home_wp, away_wp, wp)
+
+model_df$down <- as.factor(model_df$down)
+nfc_chp$down <- as.factor(nfc_chp$down)
+
+```
+```{r}
+head(model_df)
+```
+
+```{r}
+# split data into train and test sets
+set.seed(123)
+split = sample.split (model_df$poswins, SplitRatio = 0.8)
+
+train <- model_df %>% filter (split == TRUE)
+test <- model_df %>% filter (split == FALSE)
+
+#add NFC championship game to testing data
+test <- rbind(test, nfc_chp)
+
+# Create model
+model1 <- glm(poswins ~ qtr + down + ydstogo + game_seconds_remaining +
+                     yardline_100 + score_differential, train, family = "binomial")
+
+
+summary(model1)
+```
+```{r}
+# add predictions to train and test df
+train$predict_wp <- predict (model1, train, type = "response")
+
+train <- mutate (train, predict_home_wp = 
+                      ifelse(posteam == home_team, predict_wp, 1-predict_wp))
+
+train$predict_away_wp <- 1-train$predict_home_wp
+
+
+
+test$predict_wp <- predict(model1, test, type = "response")
+
+test <- mutate (test, predict_home_wp = 
+                      ifelse(posteam == home_team, predict_wp, 1-predict_wp))
+
+test$predict_away_wp <- 1-test$predict_home_wp
+
+```
+```{r}
+head(train)
+```
+
+```{r}
+#calculate RMSE
+rmse(train$wp, train$predict_wp)
+rmse(test$wp, test$predict_wp)
+```
+```{r}
+# add predicted wp to NFC championship df
+nfc_chp$predict_wp <- predict (model1, nfc_chp, type = "response")
+
+nfc_chp  <- mutate (nfc_chp, predict_home_wp = 
+                      ifelse(posteam == home_team, predict_wp, 1-predict_wp))
+
+nfc_chp$predict_away_wp <- 1-nfc_chp$predict_home_wp
+
+```
+
+```{r}
+# create plot of NFC championship
+ggplot(nfc_chp, aes(game_seconds_remaining/60, wp)) +
+  geom_line(aes(game_seconds_remaining/60, home_wp, color = "nflfastR Eagles WP"), size = 1.5) +
+  geom_line(aes(game_seconds_remaining/60, away_wp, color = "nflfastR 49ers WP"), size = 1.5) +
+  geom_line(aes(game_seconds_remaining/60, predict_home_wp, color = "SJ Model Eagles WP"), size = 1.5) +
+  geom_line(aes(game_seconds_remaining/60, predict_away_wp, color = "SJ Model 49ers WP"), size = 1.5) +
+  geom_vline(xintercept = 45, lty = "dotdash", col = "gray20", size = .75) +
+  geom_vline(xintercept = 30, lty = "dotdash", col = "gray20", size = .75) +
+  geom_vline(xintercept = 15, lty = "dotdash", col = "gray20", size = .75) +
+  geom_hline(yintercept = .5, lty = "solid", col = "gray20", size = .5)+
+  geom_hline(yintercept = 0, lty = "solid", col = "gray20", size = .75) +
+  geom_hline(yintercept = 1, lty = "solid", col = "gray20", size = .75) +
+  scale_x_reverse() + 
+  theme_minimal () +
+  ylab ("Win Probability") +
+  xlab ("Time Remaining (mins)") +
+  scale_y_continuous(labels = scales::percent) +
+  ggtitle(label = "SJ Win Probability Model Compared to nflfastR",
+          subtitle = "NFC Championship Game: San Francisco 49ers vs Philadelphia Eagles") +
+  labs (caption = "Data Source: nflfastR") +
+  scale_color_manual(name='WP Team Model',
+                     breaks=c( "SJ Model Eagles WP","nflfastR Eagles WP", "SJ Model 49ers WP", "nflfastR 49ers WP"),
+                     values=c("nflfastR Eagles WP"="#b2c9cb", "nflfastR 49ers WP"="#e5b2b2", "SJ Model Eagles WP"="#004C54", "SJ Model 49ers WP"="#AA0000"))
+
+```
+```{r}
+#reference: https://github.com/statsbylopez/BlogPosts/blob/master/WinProb.17/WinProb.check16.R
+
+## Sample 5 plays per quarter per game
+set.seed(1)
+
+test.samp <- test %>%
+  group_by(game_id, qtr) %>%
+  slice_sample(n=5) %>% 
+  ungroup()
+
+
+## Binned points - every 0.05
+test.binned <- test.samp %>%
+  mutate(p_home_bin = round(predict_wp/0.05)*0.05) %>%
+  group_by(qtr, p_home_bin) %>%
+  summarize(N = n(), home_win_bin_pct = mean(wp))
+
+ann_text <- data.frame(x = c(.25, 0.75), y = c(0.75, 0.25),
+                       lab = c("More wins\nthan expected", "Less wins\nthan expected"),
+                       qtr = factor("1"))
+
+qtr_plot <- ggplot(data = test.samp, aes(x = predict_wp, y = as.numeric(wp), 
+                           group = qtr)) +  
+  geom_point(data = test.binned,  
+             aes(x = p_home_bin, y = home_win_bin_pct, size = N), alpha = 0.5) + 
+  geom_smooth(method = "loess") +
+  geom_abline(slope = 1, intercept = 0, color = "black", lty = 2) +
+  coord_equal() + 
+  scale_x_continuous("Estimated offensive team win probability", labels = scales::percent, limits = c(0,1)) + 
+  scale_y_continuous("Observed offensive team win probability",  labels = scales::percent, limits = c(0,1)) + 
+  scale_color_brewer(palette = "Spectral", name = NULL, guide = FALSE) +
+  facet_wrap(~qtr) +
+  geom_text(data = ann_text,aes(x = x, y = y, label = lab), size = 2.5)
+
+qtr_plot + 
+  labs(title = "Win probability model: sample of 2021 and 2022 plays", 
+        subtitle = "SJ Win Probability Model") + theme(plot.title = element_text(size=10)) +
+  theme(plot.subtitle = element_text(size=9)) + theme(panel.spacing = unit(.5, "lines"))
+```
+
