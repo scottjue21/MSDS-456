@@ -1,4 +1,4 @@
-# NBA Four Factor Model & Player Classification Using KMeans Clustering
+# Assignment 2: NBA Four Factor Model & Player Classification Using KMeans Clustering
 
 ## Project Overview
 
