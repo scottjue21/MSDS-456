@@ -1,0 +1,142 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+library(purrr)
+library(lessR)
+```
+
+```{r}
+df <- data.frame(nba_team_stats_20212022_clean)
+df
+```
+
+```{r}
+df <- df %>% select(-c('WIN_PCT','L'))
+```
+
+```{r}
+corrplot(cor(df[,2:10]))
+cormat <- cor(df[,2:10])
+round(cormat, 2)
+```
+```{r}
+df$EFG_R <- rank(-df$EFG)
+df$FTR_R <- rank(-df$FTR)
+df$TPP_R <- rank(df$TPP)
+df$ORP_R <- rank(-df$ORP)
+df$OEFG_R <- rank(df$OEFG)
+df$OFTR_R <- rank(df$OFTR)
+df$DTPP_R <- rank(-df$DTPP)
+df$DRP_R <- rank(df$DRP)
+
+
+# df$shoot_rank <- rank(-df$shootdiff)
+# df$TO_rank <- rank(df$TOdiff)
+# df$reb_rank <- rank(-df$rebdiff)
+# df$FT_rank <- rank(-df$FTdiff)
+
+df_rank <- df %>% select(TEAM, W,
+                         EFG_R, FTR_R,
+                         TPP_R, ORP_R,
+                         OFTR_R, OEFG_R,
+                         DTPP_R, DRP_R)
+df_rank
+```
+
+```{r}
+df$shootdiff <- df$EFG - df$OEFG
+df$TOdiff <- df$TPP-df$DTPP
+df$rebdiff <- df$ORP- df$DRP
+df$FTdiff <- df$FTR - df$OFTR
+
+df_4 <- df %>% select(TEAM, W, shootdiff, rTOdiff, rebdiff, FTdiff)
+
+head(df_4)
+```
+
+```{r}
+
+df_4$shootdiff_r <- rank(-df_4$shootdiff)
+df_4$TOdiff_r <- rank(df_4$TOdiff)
+df_4$rebdiff_r <- rank(-df_4$rebdiff)
+df_4$FTdiff_r <- rank(-df_4$FTdiff)
+
+
+df4_rank <- df_4 %>% select(TEAM, W, shootdiff_r, TOdiff_r, rebdiff_r, FTdiff_r)
+
+df4_rank
+```
+
+```{r}
+corrplot(cor(df_4[,2:6]))
+cormat <- cor(df_4[,2:6])
+round(cormat, 2)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(df$W~df$shootdiff, ylab = 'Wins', xlab='Shooting Diff')
+plot(df$W~df$TOdiff, ylab = 'Wins', xlab='Turnover Diff')
+plot(df$W~df$rebdiff, ylab = 'Wins', xlab='Rebounding Diff')
+plot(df$W~df$FTdiff, ylab = 'Wins', , xlab='Free Throw Diff')
+```
+```{r}
+model1 <- lm(W~shootdiff+TOdiff+rebdiff+FTdiff, data=df)
+summary(model1)
+anova(model1)
+```
+
+```{r}
+model2 <- lm(W~shootdiff+TOdiff+rebdiff, data=df)
+summary(model2)
+```
+```{r}
+summary(model1)$r.squared-summary(model2)$r.squared
+```
+
+```{r}
+model3 <- lm(W~shootdiff+TOdiff, data=df)
+summary(model3)
+```
+```{r}
+summary(model2)$r.squared-summary(model3)$r.squared
+```
+```{r}
+model4 <- lm(W~shootdiff, data=df)
+summary(model4)
+```
+```{r}
+summary(model3)$r.squared-summary(model4)$r.squared
+```
+```{r}
+cormat <- cor(df_4[,2:6])
+round(cormat, 2)
+```
+
+```{r}
+df$pred_wins <- predict(model1)
+
+plot(df$W~df$pred_wins,
+     xlab="Predicted Wins",
+     ylab="Actual Wins")
+
+```
+
+```{r}
+summary(model1)
+anova(model1)
+```
+```{r}
+head(df)
+```
+```{r}
+df %>% select(TEAM, W, pred_wins)
+```
+
