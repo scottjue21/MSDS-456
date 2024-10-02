@@ -34,5 +34,10 @@ However, certain factors like leadership, injury history, and the effects of lon
 
 In summary, these models serve as a useful tool for NHL teams to enhance data-driven player valuation strategies, with the potential for further refinement in subsequent iterations.
 
+### Contributors
 
+This project was completed by:
+
+- Scott Jue
+- Laken Rivet
 
